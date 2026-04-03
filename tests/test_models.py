@@ -2,7 +2,7 @@
 
 import time
 
-from src.models import ApprovalRequest, ApprovalStatus
+from src.models import ApprovalRequest, ApprovalStatus, GoogleConfig, ServerConfig
 
 
 def test_hash_deterministic():
@@ -66,3 +66,16 @@ def test_status_enum_values():
     assert ApprovalStatus.APPROVED == "approved"
     assert ApprovalStatus.REJECTED == "rejected"
     assert ApprovalStatus.EXPIRED == "expired"
+
+
+def test_google_config_defaults():
+    cfg = GoogleConfig()
+    assert cfg.client_secret_path == "credentials/client_secret.json"
+    assert cfg.credentials_dir == "credentials"
+    assert cfg.secret_env == "GUARDED_MCP_SECRET"
+    assert cfg.accounts == []
+
+
+def test_server_config_includes_google():
+    cfg = ServerConfig()
+    assert isinstance(cfg.google, GoogleConfig)

@@ -82,6 +82,15 @@ class TelegramConfig(BaseModel):
     allowed_user_ids: list[int] = Field(default_factory=list)
 
 
+class GoogleConfig(BaseModel):
+    """Google OAuth2 configuration for multi-account access."""
+
+    client_secret_path: str = "credentials/client_secret.json"
+    credentials_dir: str = "credentials"
+    secret_env: str = "GUARDED_MCP_SECRET"
+    accounts: list[str] = Field(default_factory=list)
+
+
 class ServerConfig(BaseModel):
     """Top-level server configuration."""
 
@@ -90,4 +99,5 @@ class ServerConfig(BaseModel):
     approval_timeout_seconds: int = 300
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
+    google: GoogleConfig = Field(default_factory=GoogleConfig)
     integrations: dict[str, IntegrationConfig] = Field(default_factory=dict)
