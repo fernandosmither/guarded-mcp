@@ -18,6 +18,7 @@ from src.integrations.base import Integration, ToolDef
 from src.models import (
     ApprovalRequest,
     ApprovalStatus,
+    GoogleConfig,
     IntegrationConfig,
     PolicyConfig,
     ServerConfig,
@@ -43,6 +44,7 @@ def load_config(path: str = "config.toml") -> ServerConfig:
 
     telegram = TelegramConfig(**raw.get("telegram", {}))
     policy = PolicyConfig(**raw.get("policy", {}))
+    google = GoogleConfig(**raw.get("google", {}))
 
     integrations: dict[str, IntegrationConfig] = {}
     for name, int_raw in raw.get("integrations", {}).items():
@@ -58,6 +60,7 @@ def load_config(path: str = "config.toml") -> ServerConfig:
         ),
         telegram=telegram,
         policy=policy,
+        google=google,
         integrations=integrations,
     )
 
