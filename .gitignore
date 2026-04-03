@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Test cache
+.pytest_cache/
+
+# Config with secrets
+config.toml
+.env
+.envrc
+
+# Credentials
+credentials/
+client_secret*.json

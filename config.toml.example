@@ -1,0 +1,28 @@
+# Guarded MCP Server Configuration
+# Copy to config.toml and fill in your values.
+
+[server]
+host = "127.0.0.1"              # Bind address (use Tailscale IP for remote access)
+port = 3100
+approval_timeout_seconds = 300   # 5 minutes
+
+[telegram]
+bot_token_env = "APPROVAL_BOT_TOKEN"   # Env var name containing the bot token
+chat_id = 0                             # Your Telegram chat ID
+allowed_user_ids = []                   # [your_user_id]
+
+[policy]
+auto_approve_reads = true               # Read-only tools skip approval
+trust_elevation_minutes = 30            # "Trust 30min" button duration
+
+# Example integration: Gmail
+# [integrations.gmail]
+# enabled = true
+# credentials_env_prefix = "GMAIL_"
+#
+# [integrations.gmail.tools.read_emails]
+# requires_approval = false
+#
+# [integrations.gmail.tools.send_email]
+# requires_approval = true
+# auto_approve_domains = ["mycompany.com"]
