@@ -265,10 +265,9 @@ class GuardedMCPServer:
             await self.approval.stop()
             logger.info("Approval engine stopped")
 
-    def run(self) -> None:
+    async def run(self) -> None:
         """Run the MCP server."""
-        self.mcp.run(
-            transport="http",
+        await self.mcp.run_http_async(
             host=self.config.host,
             port=self.config.port,
             stateless_http=True,

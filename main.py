@@ -55,7 +55,7 @@ async def main() -> None:
 
     await server.start()
     try:
-        server.run()
+        await server.run()
     finally:
         await server.stop()
 
