@@ -2,7 +2,7 @@
 # Copy to config.toml and fill in your values.
 
 [server]
-host = "127.0.0.1"              # Bind address (use Tailscale IP for remote access)
+host = "127.0.0.1"              # Bind address
 port = 3100
 approval_timeout_seconds = 300   # 5 minutes
 
@@ -15,14 +15,28 @@ allowed_user_ids = []                   # [your_user_id]
 auto_approve_reads = true               # Read-only tools skip approval
 trust_elevation_minutes = 30            # "Trust 30min" button duration
 
-# Example integration: Gmail
-# [integrations.gmail]
-# enabled = true
-# credentials_env_prefix = "GMAIL_"
-#
-# [integrations.gmail.tools.read_emails]
-# requires_approval = false
-#
-# [integrations.gmail.tools.send_email]
-# requires_approval = true
-# auto_approve_domains = ["mycompany.com"]
+[google]
+client_secret_path = "credentials/client_secret.json"
+credentials_dir = "credentials"
+secret_env = "GUARDED_MCP_SECRET"       # Env var with Fernet encryption key
+accounts = []                           # ["work", "personal"]
+
+# Gmail tool overrides (reads are auto-approved by policy)
+[integrations.gmail.tools.gmail__send_email]
+requires_approval = true
+
+[integrations.gmail.tools.gmail__reply_to_email]
+requires_approval = true
+
+[integrations.gmail.tools.gmail__modify_email]
+requires_approval = true
+
+# Calendar tool overrides
+[integrations.calendar.tools.calendar__create_event]
+requires_approval = true
+
+[integrations.calendar.tools.calendar__update_event]
+requires_approval = true
+
+[integrations.calendar.tools.calendar__delete_event]
+requires_approval = true
