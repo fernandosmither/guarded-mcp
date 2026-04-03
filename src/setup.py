@@ -45,7 +45,7 @@ def _prompt_int(label: str, default: int) -> int:
 
 def setup_encryption() -> str:
     """Step 1: Encryption key."""
-    print("\n1/4 Encryption key")
+    print("\n1/5 Encryption key")
     existing = os.environ.get("GUARDED_MCP_SECRET", "")
     if existing:
         print(f"  GUARDED_MCP_SECRET is set ({len(existing)} chars)")
@@ -67,7 +67,7 @@ def setup_encryption() -> str:
 
 def setup_telegram() -> dict:
     """Step 2: Telegram bot configuration."""
-    print("\n2/4 Telegram bot")
+    print("\n2/5 Telegram bot")
     print("  Create a bot via @BotFather on Telegram to get a token.")
     print("  To find your chat ID, message @userinfobot on Telegram.")
     print()
@@ -88,7 +88,7 @@ def setup_telegram() -> dict:
 
 def setup_policy() -> dict:
     """Step 3: Approval policy."""
-    print("\n3/4 Approval policy")
+    print("\n3/5 Approval policy")
     auto_reads = _prompt_yn("Auto-approve read-only tools?", True)
     trust_min = _prompt_int("Trust elevation minutes", 30)
     return {
@@ -99,34 +99,99 @@ def setup_policy() -> dict:
 
 def setup_google(secret_key: str) -> list[str]:
     """Step 4: Google accounts (optional)."""
-    print("\n4/4 Google accounts (optional)")
-    print("  Requires credentials/client_secret.json from Google Cloud Console.")
+    import webbrowser
 
-    if not Path("credentials/client_secret.json").exists():
-        print("  No client_secret.json found — skipping Google setup.")
-        print("  To add later: place client_secret.json in credentials/")
-        print("  Then run: uv run python -m src.auth_cli add <alias>")
+    print("\n4/5 Google Cloud project")
+
+    if not _prompt_yn("Set up Gmail & Google Calendar access?", False):
+        print("  Skipping. You can add Google accounts later with:")
+        print("    uv run python -m src.auth_cli add <alias>")
         return []
 
-    if not _prompt_yn("Link a Google account?", False):
-        return []
+    client_secret = Path("credentials/client_secret.json")
+
+    if not client_secret.exists():
+        print()
+        print("  You need a Google Cloud OAuth client. Let's set one up.")
+        print()
+        print("  Step A: Create a Google Cloud project (or use an existing one)")
+        input("  Press Enter to open Google Cloud Console...")
+        webbrowser.open(
+            "https://console.cloud.google.com/projectcreate"
+        )
+        input("  Press Enter when your project is ready...")
+
+        print()
+        print("  Step B: Enable the Gmail and Calendar APIs")
+        input("  Press Enter to open the API library...")
+        webbrowser.open(
+            "https://console.cloud.google.com/apis/library/gmail.googleapis.com"
+        )
+        print("  Enable 'Gmail API', then come back here.")
+        input("  Press Enter to continue...")
+        webbrowser.open(
+            "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com"
+        )
+        print("  Enable 'Google Calendar API', then come back here.")
+        input("  Press Enter to continue...")
+
+        print()
+        print("  Step C: Configure OAuth consent screen")
+        print("  Set user type to 'External', fill in app name,")
+        print("  add your email as a test user.")
+        input("  Press Enter to open OAuth consent screen...")
+        webbrowser.open(
+            "https://console.cloud.google.com/apis/credentials/consent"
+        )
+        input("  Press Enter when consent screen is configured...")
+
+        print()
+        print("  Step D: Create OAuth credentials")
+        print("  Click '+ Create Credentials' > 'OAuth client ID'")
+        print("  Application type: 'Desktop app'")
+        print("  Download the JSON file.")
+        input("  Press Enter to open the Credentials page...")
+        webbrowser.open(
+            "https://console.cloud.google.com/apis/credentials"
+        )
+
+        print()
+        print("  Save the downloaded JSON as:")
+        print(f"    {client_secret.resolve()}")
+        print()
+        input("  Press Enter when the file is in place...")
+
+        if not client_secret.exists():
+            print(
+                "  client_secret.json still not found."
+                " Please place it manually and re-run setup."
+            )
+            return []
+
+        print("  Found client_secret.json!")
+
+    print("\n5/5 Link Google accounts")
+    print("  Now let's link your Google accounts.")
+    print("  Each account opens a browser for OAuth consent.")
+    print()
 
     from src.auth import GoogleAuthManager
 
     auth = GoogleAuthManager(
-        client_secret_path="credentials/client_secret.json",
+        client_secret_path=str(client_secret),
         credentials_dir="credentials",
         secret_key=secret_key,
     )
 
     accounts: list[str] = []
     while True:
-        alias = _prompt("Account alias (e.g., 'work', 'personal')")
+        alias = _prompt(
+            "Account alias (e.g., 'work', 'personal')"
+        )
         try:
             print("  Opening browser for Google OAuth...")
             email = auth.add_account(alias)
-            print(f"  Account: {email}")
-            print(f'  Linked "{alias}"')
+            print(f"  Linked '{alias}' ({email})")
             accounts.append(alias)
         except Exception as e:
             print(f"  Error linking account: {e}")
