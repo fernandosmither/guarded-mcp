@@ -53,24 +53,22 @@ AI Agent (Claude, GPT, etc.)
 
 ### Setup
 
+Run the interactive setup wizard:
+
 ```bash
 git clone https://github.com/fernandosmither/guarded-mcp.git
 cd guarded-mcp
 uv sync
+uv run python -m src.setup
 ```
 
-### Configure
+The wizard walks you through:
+1. Generating an encryption key for credential storage
+2. Configuring your Telegram bot (token, chat ID, allowed users)
+3. Setting approval policy defaults
+4. Optionally linking Google accounts via OAuth2
 
-```bash
-cp config.toml.example config.toml
-# Edit config.toml with your Telegram credentials
-```
-
-Set the bot token:
-
-```bash
-export APPROVAL_BOT_TOKEN="your-bot-token-here"
-```
+Or configure manually: `cp config.toml.example config.toml` and edit.
 
 ### Run
 
@@ -170,6 +168,86 @@ uv sync --extra dev
 uv run pytest -v
 uv run ruff check src/ tests/
 ```
+
+## Setup for AI Agents
+
+If you're an AI agent setting up guarded-mcp on behalf of a user, follow these steps:
+
+### Prerequisites
+- Python 3.12+ and [uv](https://github.com/astral-sh/uv) installed
+- A Telegram bot token (user must create via [@BotFather](https://t.me/BotFather))
+- User's Telegram chat ID and user ID (from [@userinfobot](https://t.me/userinfobot))
+
+### Step-by-step
+
+1. **Clone and install:**
+   ```bash
+   git clone https://github.com/fernandosmither/guarded-mcp.git
+   cd guarded-mcp
+   uv sync
+   ```
+
+2. **Generate encryption key:**
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+   Ask the user to add the output to their shell profile:
+   ```bash
+   export GUARDED_MCP_SECRET="<generated-key>"
+   ```
+
+3. **Set the Telegram bot token:**
+   ```bash
+   export APPROVAL_BOT_TOKEN="<token-from-botfather>"
+   ```
+
+4. **Write config.toml:**
+   ```toml
+   [server]
+   host = "127.0.0.1"
+   port = 3100
+   approval_timeout_seconds = 300
+
+   [telegram]
+   bot_token_env = "APPROVAL_BOT_TOKEN"
+   chat_id = <user-chat-id>
+   allowed_user_ids = [<user-id>]
+
+   [policy]
+   auto_approve_reads = true
+   trust_elevation_minutes = 30
+
+   [google]
+   client_secret_path = "credentials/client_secret.json"
+   credentials_dir = "credentials"
+   secret_env = "GUARDED_MCP_SECRET"
+   accounts = []
+   ```
+
+5. **Link Google accounts (requires user interaction):**
+   The user must complete OAuth consent in a browser. Run:
+   ```bash
+   uv run python -m src.auth_cli add work
+   ```
+   Then update `config.toml` to include the alias:
+   ```toml
+   accounts = ["work"]
+   ```
+
+6. **Start the server:**
+   ```bash
+   uv run python main.py
+   ```
+
+### Connecting to the MCP server
+
+The server runs on `http://127.0.0.1:3100` with stateless HTTP transport. Configure your MCP client to connect to this URL.
+
+### Tool naming convention
+
+All tools follow the pattern `{integration}__{tool_name}`. Each tool that accesses Google services takes an `account` parameter specifying which linked account to use (e.g., `"work"`, `"personal"`).
+
+Read-only tools (searches, reads, listings) are auto-approved. Write tools (send, create, modify, delete) require Telegram approval unless overridden in config.
 
 ## License
 
