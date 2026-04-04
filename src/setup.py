@@ -147,9 +147,12 @@ def setup_google(secret_key: str) -> list[str]:
 
         print()
         print("  Step D: Create OAuth credentials")
-        print("  Click '+ Create Credentials' > 'OAuth client ID'")
-        print("  Application type: 'Desktop app'")
-        print("  Download the JSON file.")
+        print("  1. Click '+ Create Credentials' > 'OAuth client ID'")
+        print("  2. Application type: 'Desktop app'")
+        print("  3. After creating, click the client to edit it")
+        print("  4. Under 'Authorized redirect URIs', add:")
+        print("       http://localhost")
+        print("  5. Save, then download the JSON file")
         input("  Press Enter to open the Credentials page...")
         webbrowser.open(
             "https://console.cloud.google.com/apis/credentials"
