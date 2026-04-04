@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -22,6 +23,21 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.labels",
     "https://www.googleapis.com/auth/calendar.events",
 ]
+
+
+def load_dotenv() -> None:
+    """Load .env file into os.environ (no external deps)."""
+    env_path = Path(".env")
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")
+        if key.strip() not in os.environ:
+            os.environ[key.strip()] = value
 
 
 class GoogleAuthManager:

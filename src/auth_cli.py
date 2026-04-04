@@ -12,10 +12,11 @@ import argparse
 import os
 import sys
 
-from src.auth import GoogleAuthManager
+from src.auth import GoogleAuthManager, load_dotenv
 
 
 def _get_manager() -> GoogleAuthManager:
+    load_dotenv()
     secret_key = os.environ.get("GUARDED_MCP_SECRET", "")
     if not secret_key:
         print("Error: GUARDED_MCP_SECRET env var is not set.")
