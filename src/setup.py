@@ -6,6 +6,7 @@ Usage: python -m src.setup
 from __future__ import annotations
 
 import os
+import tomllib
 from pathlib import Path
 
 DIVIDER = "\033[90m" + "-" * 50 + "\033[0m"
@@ -14,6 +15,15 @@ GREEN = "\033[32m"
 YELLOW = "\033[33m"
 DIM = "\033[90m"
 RESET = "\033[0m"
+
+
+def _load_existing_config() -> dict:
+    """Load existing config.toml if present, else empty dict."""
+    config_path = Path("config.toml")
+    if not config_path.exists():
+        return {}
+    with open(config_path, "rb") as f:
+        return tomllib.load(f)
 
 
 def _prompt(label: str, default: str = "") -> str:
@@ -72,44 +82,56 @@ def _wait(msg: str = "Press Enter to continue...") -> None:
     input(f"  {DIM}{msg}{RESET}")
 
 
-def setup_encryption() -> str:
+def setup_encryption(existing: dict) -> str:
     """Step 1: Encryption key."""
     _step_header(1, 5, "Encryption key")
     print("  Used to encrypt Google OAuth tokens at rest.")
     print()
 
-    existing = os.environ.get("GUARDED_MCP_SECRET", "")
-    if existing:
-        _ok(f"GUARDED_MCP_SECRET already set ({len(existing)} chars)")
-        if not _prompt_yn("Keep existing key?", True):
-            existing = ""
+    env_key = existing.get("google", {}).get(
+        "secret_env", "GUARDED_MCP_SECRET"
+    )
+    current = os.environ.get(env_key, "")
+    if current:
+        _ok(f"{env_key} already set ({len(current)} chars)")
+        if _prompt_yn("Keep existing key?", True):
+            return current
 
-    if not existing:
-        from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet
 
-        key = Fernet.generate_key().decode()
-        print()
-        print("  Generated key:")
-        print(f"    {BOLD}{key}{RESET}")
-        print()
-        print("  Add to your shell profile (~/.bashrc or ~/.zshrc):")
-        print(f"    export GUARDED_MCP_SECRET=\"{key}\"")
-        print()
-        _hint(
-            "You can also export it now in your current shell "
-            "to continue setup."
-        )
-        return key
-
-    return existing
+    key = Fernet.generate_key().decode()
+    print()
+    print("  Generated key:")
+    print(f"    {BOLD}{key}{RESET}")
+    print()
+    print("  Add to your shell profile (~/.bashrc or ~/.zshrc):")
+    print(f'    export GUARDED_MCP_SECRET="{key}"')
+    print()
+    _hint(
+        "You can also export it now in your current shell "
+        "to continue setup."
+    )
+    return key
 
 
-def setup_telegram() -> dict | None:
+def setup_telegram(existing: dict) -> dict | None:
     """Step 2: Telegram bot configuration."""
     _step_header(2, 5, "Telegram approval bot")
     print("  Sends approval requests when the AI agent tries")
     print("  to use gated tools (send email, create events, etc).")
     print()
+
+    tg = existing.get("telegram", {})
+    has_existing = tg.get("chat_id", 0) != 0
+
+    if has_existing:
+        _ok(f"Existing config: chat_id={tg['chat_id']}")
+        if _prompt_yn("Keep existing Telegram config?", True):
+            return {
+                "bot_token": "",
+                "chat_id": tg["chat_id"],
+                "allowed_user_ids": tg.get("allowed_user_ids", []),
+            }
 
     if not _prompt_yn("Configure Telegram bot?", True):
         _hint("Skipping. Gated tools will fail without a bot configured.")
@@ -120,10 +142,27 @@ def setup_telegram() -> dict | None:
     _hint("To find your chat/user ID, message @userinfobot.")
     print()
 
-    bot_token = _prompt("Bot token (from @BotFather)")
-    chat_id = _prompt_int("Chat ID", 0)
+    prev_token = os.environ.get(
+        tg.get("bot_token_env", "APPROVAL_BOT_TOKEN"), ""
+    )
+    if prev_token:
+        bot_token = _prompt(
+            "Bot token (from @BotFather)",
+            prev_token[:8] + "..." + prev_token[-4:],
+        )
+        if "..." in bot_token:
+            bot_token = prev_token
+    else:
+        bot_token = _prompt("Bot token (from @BotFather)")
 
-    default_users = str(chat_id) if chat_id else ""
+    chat_id = _prompt_int("Chat ID", tg.get("chat_id", 0))
+
+    prev_users = tg.get("allowed_user_ids", [])
+    default_users = (
+        ", ".join(str(u) for u in prev_users)
+        if prev_users
+        else (str(chat_id) if chat_id else "")
+    )
     users_str = _prompt(
         "Allowed user IDs (comma-separated)", default_users
     )
@@ -135,7 +174,7 @@ def setup_telegram() -> dict | None:
     _ok("Telegram configured")
     print()
     print("  Set the bot token in your environment:")
-    print(f"    export APPROVAL_BOT_TOKEN=\"{bot_token}\"")
+    print(f'    export APPROVAL_BOT_TOKEN="{bot_token}"')
 
     return {
         "bot_token": bot_token,
@@ -144,22 +183,40 @@ def setup_telegram() -> dict | None:
     }
 
 
-def setup_policy() -> dict:
+def setup_policy(existing: dict) -> dict:
     """Step 3: Approval policy."""
     _step_header(3, 5, "Approval policy")
     print("  Controls which tool calls need human approval.")
     print()
 
-    if not _prompt_yn("Customize policy? (defaults are sensible)", False):
-        _ok("Using defaults: auto-approve reads, 30min trust elevation")
-        return {
-            "auto_approve_reads": True,
-            "trust_elevation_minutes": 30,
+    pol = existing.get("policy", {})
+    prev_auto = pol.get("auto_approve_reads", True)
+    prev_trust = pol.get("trust_elevation_minutes", 30)
+
+    if pol:
+        auto_str = "yes" if prev_auto else "no"
+        _hint(
+            f"Current: auto-approve reads={auto_str}, "
+            f"trust={prev_trust}min"
+        )
+
+    if not _prompt_yn("Customize policy?", False):
+        result = {
+            "auto_approve_reads": prev_auto,
+            "trust_elevation_minutes": prev_trust,
         }
+        auto_str = "yes" if result["auto_approve_reads"] else "no"
+        _ok(
+            f"Using: auto-approve reads={auto_str}, "
+            f"trust={result['trust_elevation_minutes']}min"
+        )
+        return result
 
     print()
-    auto_reads = _prompt_yn("Auto-approve read-only tools?", True)
-    trust_min = _prompt_int("Trust elevation minutes", 30)
+    auto_reads = _prompt_yn(
+        "Auto-approve read-only tools?", prev_auto
+    )
+    trust_min = _prompt_int("Trust elevation minutes", prev_trust)
     _ok("Policy configured")
     return {
         "auto_approve_reads": auto_reads,
@@ -240,9 +297,7 @@ def setup_google_cloud() -> bool:
     _wait("Press Enter when the file is in place...")
 
     if not client_secret.exists():
-        print(
-            f"  {YELLOW}client_secret.json not found.{RESET}"
-        )
+        print(f"  {YELLOW}client_secret.json not found.{RESET}")
         if _prompt_yn("Try again? (check the file path)", True):
             _wait("Press Enter when ready...")
             if not client_secret.exists():
@@ -256,19 +311,14 @@ def setup_google_cloud() -> bool:
     return True
 
 
-def setup_google_accounts(secret_key: str) -> list[str]:
+def setup_google_accounts(
+    secret_key: str, existing: dict
+) -> list[str]:
     """Step 5: Link Google accounts."""
     _step_header(5, 5, "Link Google accounts")
     print("  Each account opens a browser for OAuth consent.")
     print("  You can link multiple accounts (work, personal, etc).")
     print()
-
-    if not _prompt_yn("Link a Google account now?", True):
-        _hint(
-            "You can link accounts later with: "
-            "uv run python -m src.auth_cli add <alias>"
-        )
-        return []
 
     from src.auth import GoogleAuthManager
 
@@ -278,17 +328,41 @@ def setup_google_accounts(secret_key: str) -> list[str]:
         secret_key=secret_key,
     )
 
-    accounts: list[str] = []
+    # Show existing linked accounts
+    prev_accounts = existing.get("google", {}).get("accounts", [])
+    on_disk = auth.list_accounts()
+    if on_disk:
+        _ok(f"Already linked: {', '.join(on_disk)}")
+        if prev_accounts and not _prompt_yn(
+            "Link additional accounts?", False
+        ):
+            return on_disk
+
+    if not on_disk and not _prompt_yn(
+        "Link a Google account now?", True
+    ):
+        _hint(
+            "You can link accounts later with: "
+            "uv run python -m src.auth_cli add <alias>"
+        )
+        return list(prev_accounts)
+
+    accounts = list(on_disk)
     while True:
         print()
         alias = _prompt(
             "Account alias (e.g., 'work', 'personal')"
         )
+        if alias in accounts:
+            print(f"  {YELLOW}'{alias}' is already linked.{RESET}")
+            if not _prompt_yn("Re-link it? (replaces token)", False):
+                continue
         try:
             print("  Opening browser for Google OAuth...")
             email = auth.add_account(alias)
             _ok(f"Linked '{alias}' ({email})")
-            accounts.append(alias)
+            if alias not in accounts:
+                accounts.append(alias)
         except Exception as e:
             print(f"  {YELLOW}Error: {e}{RESET}")
             _hint("Check the error and try again, or skip for now.")
@@ -363,26 +437,33 @@ def main() -> None:
     print(f"  {DIM}Authorization-first MCP server{RESET}")
     print()
 
-    if Path("config.toml").exists() and not _prompt_yn(
-        "config.toml already exists. Reconfigure?", False
-    ):
-        print("  Setup cancelled.")
-        return
+    existing = _load_existing_config()
+
+    if existing:
+        _hint("Existing config.toml found — values will be used as defaults.")
+        if not _prompt_yn("Reconfigure?", True):
+            print("  Setup cancelled.")
+            return
 
     # Step 1: Encryption key
-    secret_key = setup_encryption()
+    secret_key = setup_encryption(existing)
 
     # Step 2: Telegram
-    telegram = setup_telegram()
+    telegram = setup_telegram(existing)
 
     # Step 3: Policy
-    policy = setup_policy()
+    policy = setup_policy(existing)
 
     # Step 4+5: Google (split into cloud project + account linking)
     has_google = setup_google_cloud()
     accounts: list[str] = []
     if has_google:
-        accounts = setup_google_accounts(secret_key)
+        accounts = setup_google_accounts(secret_key, existing)
+    else:
+        # Preserve existing accounts even if skipping GCP setup
+        accounts = list(
+            existing.get("google", {}).get("accounts", [])
+        )
 
     # Write config
     write_config(telegram, policy, accounts)
@@ -400,7 +481,7 @@ def main() -> None:
         )
     print()
     print("  Make sure these env vars are set:")
-    if telegram:
+    if telegram and telegram.get("bot_token"):
         print(
             f"    export APPROVAL_BOT_TOKEN="
             f"\"{telegram['bot_token']}\""
