@@ -56,9 +56,10 @@ class GoogleAuthManager:
         creds = flow.run_local_server(port=0)
         self._save_encrypted(alias, creds.to_json())
 
-        svc = build("oauth2", "v2", credentials=creds)
-        info = svc.userinfo().get().execute()
-        return info.get("email", alias)
+        # Get email from Gmail profile (no extra scope needed)
+        svc = build("gmail", "v1", credentials=creds)
+        profile = svc.users().getProfile(userId="me").execute()
+        return profile.get("emailAddress", alias)
 
     def remove_account(self, alias: str) -> None:
         """Delete encrypted credentials for an account."""
