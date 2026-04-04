@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from src.auth import GoogleAuthManager
 from src.integrations.calendar import CalendarIntegration
@@ -17,7 +18,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _load_dotenv() -> None:
+    """Load .env file into os.environ (no deps)."""
+    env_path = Path(".env")
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")
+        if key.strip() not in os.environ:
+            os.environ[key.strip()] = value
+
+
 async def main() -> None:
+    _load_dotenv()
     config = load_config()
     server = GuardedMCPServer(config)
 

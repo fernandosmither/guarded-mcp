@@ -82,6 +82,41 @@ def _wait(msg: str = "Press Enter to continue...") -> None:
     input(f"  {DIM}{msg}{RESET}")
 
 
+def _save_to_dotenv(key: str, value: str) -> None:
+    """Save or update a key=value pair in .env file."""
+    env_path = Path(".env")
+    lines: list[str] = []
+    found = False
+
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith(f"{key}="):
+                lines.append(f'{key}="{value}"')
+                found = True
+            else:
+                lines.append(line)
+
+    if not found:
+        lines.append(f'{key}="{value}"')
+
+    env_path.write_text("\n".join(lines) + "\n")
+
+
+def _load_dotenv() -> None:
+    """Load .env file into os.environ (simple parser, no deps)."""
+    env_path = Path(".env")
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")
+        if key.strip() not in os.environ:
+            os.environ[key.strip()] = value
+
+
 def setup_encryption(existing: dict) -> str:
     """Step 1: Encryption key."""
     _step_header(1, 5, "Encryption key")
@@ -92,25 +127,68 @@ def setup_encryption(existing: dict) -> str:
         "secret_env", "GUARDED_MCP_SECRET"
     )
     current = os.environ.get(env_key, "")
+
     if current:
         _ok(f"{env_key} already set ({len(current)} chars)")
         if _prompt_yn("Keep existing key?", True):
             return current
 
+    # Check if encrypted tokens already exist — new key would break them
+    creds_dir = Path(
+        existing.get("google", {}).get("credentials_dir", "credentials")
+    )
+    has_tokens = list(creds_dir.glob("*.enc")) if creds_dir.exists() else []
+
+    if has_tokens:
+        names = ", ".join(p.stem for p in has_tokens)
+        print(
+            f"  {YELLOW}Encrypted tokens found: {names}{RESET}"
+        )
+        print(
+            f"  {YELLOW}A new key will NOT decrypt these tokens.{RESET}"
+        )
+        print()
+        print(
+            "  You need the original key. Set it in your shell:"
+        )
+        print(f'    export {env_key}="<your-original-key>"')
+        print()
+        print("  Then re-run this wizard.")
+        _hint(
+            "If you've lost the key, delete the .enc files in "
+            f"{creds_dir}/ and re-link your accounts."
+        )
+        key = _prompt(
+            "Paste your existing key (or 'new' to generate a fresh one)"
+        )
+        if key.lower() == "new":
+            print(
+                f"  {YELLOW}Warning: existing tokens will be "
+                f"unreadable with a new key.{RESET}"
+            )
+            if not _prompt_yn("Generate new key anyway?", False):
+                print("  Re-run setup with your original key set.")
+                raise SystemExit(1)
+        else:
+            # Validate the key works
+            from cryptography.fernet import Fernet
+
+            try:
+                Fernet(key.encode())
+                _ok("Key accepted")
+                return key
+            except Exception:
+                print(f"  {YELLOW}Invalid Fernet key.{RESET}")
+                print("  Re-run setup with a valid key.")
+                raise SystemExit(1) from None
+
     from cryptography.fernet import Fernet
 
     key = Fernet.generate_key().decode()
-    print()
-    print("  Generated key:")
-    print(f"    {BOLD}{key}{RESET}")
-    print()
-    print("  Add to your shell profile (~/.bashrc or ~/.zshrc):")
-    print(f'    export GUARDED_MCP_SECRET="{key}"')
-    print()
-    _hint(
-        "You can also export it now in your current shell "
-        "to continue setup."
-    )
+    _save_to_dotenv("GUARDED_MCP_SECRET", key)
+    _ok("Generated and saved to .env")
+    _hint("Also exported for this wizard session.")
+    os.environ["GUARDED_MCP_SECRET"] = key
     return key
 
 
@@ -170,11 +248,10 @@ def setup_telegram(existing: dict) -> dict | None:
         int(u.strip()) for u in users_str.split(",") if u.strip()
     ]
 
+    _save_to_dotenv("APPROVAL_BOT_TOKEN", bot_token)
+    os.environ["APPROVAL_BOT_TOKEN"] = bot_token
     print()
-    _ok("Telegram configured")
-    print()
-    print("  Set the bot token in your environment:")
-    print(f'    export APPROVAL_BOT_TOKEN="{bot_token}"')
+    _ok("Telegram configured (token saved to .env)")
 
     return {
         "bot_token": bot_token,
@@ -437,6 +514,7 @@ def main() -> None:
     print(f"  {DIM}Authorization-first MCP server{RESET}")
     print()
 
+    _load_dotenv()
     existing = _load_existing_config()
 
     if existing:
@@ -480,15 +558,9 @@ def main() -> None:
             + ", ".join(accounts)
         )
     print()
-    print("  Make sure these env vars are set:")
-    if telegram and telegram.get("bot_token"):
-        print(
-            f"    export APPROVAL_BOT_TOKEN="
-            f"\"{telegram['bot_token']}\""
-        )
-    print(f'    export GUARDED_MCP_SECRET="{secret_key}"')
+    print(f"  {BOLD}Secrets saved to:{RESET} .env (auto-loaded on startup)")
     print()
-    print("  Then start the server:")
+    print("  Start the server:")
     print(f"    {BOLD}uv run python main.py{RESET}")
     print()
 
